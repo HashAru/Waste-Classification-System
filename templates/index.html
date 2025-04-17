@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waste Classification App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #3498db;
+        }
+        .upload-area p {
+            margin: 0;
+            font-size: 16px;
+            color: #7f8c8d;
+        }
+        #file-upload {
+            display: none;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .result-container {
+            display: none;
+            margin-top: 30px;
+            text-align: center;
+        }
+        .result-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .result-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .recyclable {
+            color: #27ae60;
+        }
+        .non-recyclable {
+            color: #e74c3c;
+        }
+        .preview-image {
+            max-width: 300px;
+            max-height: 300px;
+            margin: 20px auto;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: block;
+        }
+        .confidence {
+            font-size: 18px;
+            color: #7f8c8d;
+            margin-top: 10px;
+        }
+        .error-message {
+            color: #e74c3c;
+            margin-top: 15px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Waste Classification System</h1>
+        
+        <div class="upload-area" id="upload-area">
+            <p>Click to select or drag an image here</p>
+        </div>
+        
+        <input type="file" id="file-upload" accept=".jpg, .jpeg, .png">
+        
+        <div style="text-align: center;">
+            <button class="btn" id="submit-btn" disabled>Classify Image</button>
+        </div>
+        
+        <div class="error-message" id="error-message"></div>
+        
+        <div class="loading" id="loading">
+            <div class="loading-spinner"></div>
+            <p>Processing image...</p>
+        </div>
+        
+        <div class="result-container" id="result-container">
+            <h2>Classification Result</h2>
+            <img id="preview-image" class="preview-image" alt="Uploaded image preview">
+            
+            <div class="result-card">
+                <div class="result-title">
+                    Detected item: <span id="class-name"></span>
+                </div>
+                <div id="recyclable-status" class=""></div>
+                <div class="confidence">
+                    Confidence: <span id="confidence"></span>%
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const fileUpload = document.getElementById('file-upload');
+        const submitBtn = document.getElementById('submit-btn');
+        const resultContainer = document.getElementById('result-container');
+        const previewImage = document.getElementById('preview-image');
+        const className = document.getElementById('class-name');
+        const recyclableStatus = document.getElementById('recyclable-status');
+        const confidence = document.getElementById('confidence');
+        const errorMessage = document.getElementById('error-message');
+        const loading = document.getElementById('loading');
+        
+        // Click on the upload area to trigger file selection
+        uploadArea.addEventListener('click', () => {
+            fileUpload.click();
+        });
+        
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#3498db';
+            uploadArea.style.backgroundColor = '#ecf0f1';
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.borderColor = '#ccc';
+            uploadArea.style.backgroundColor = 'transparent';
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ccc';
+            uploadArea.style.backgroundColor = 'transparent';
+            
+            if (e.dataTransfer.files.length) {
+                fileUpload.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+        
+        // File selection
+        fileUpload.addEventListener('change', handleFileSelect);
+        
+        function handleFileSelect() {
+            if (fileUpload.files && fileUpload.files[0]) {
+                const file = fileUpload.files[0];
+                
+                // Check file type
+                const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+                if (!validTypes.includes(file.type)) {
+                    showError('Please select a valid image file (JPG, JPEG, PNG)');
+                    submitBtn.disabled = true;
+                    return;
+                }
+                
+                // Display image preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImage.src = e.target.result;
+                    uploadArea.innerHTML = `<p>${file.name}</p>`;
+                    submitBtn.disabled = false;
+                    hideError();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+        
+        // Submit button click handler
+        submitBtn.addEventListener('click', async () => {
+            if (!fileUpload.files || !fileUpload.files[0]) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileUpload.files[0]);
+            
+            try {
+                showLoading();
+                hideError();
+                
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    showError(result.error);
+                    hideLoading();
+                    return;
+                }
+                
+                // Display results
+                className.textContent = result.class;
+                confidence.textContent = result.confidence.toFixed(2);
+                
+                if (result.recyclable) {
+                    recyclableStatus.textContent = "This item is recyclable! ♻️";
+                    recyclableStatus.className = "recyclable";
+                } else {
+                    recyclableStatus.textContent = "This item is NOT recyclable ⛔";
+                    recyclableStatus.className = "non-recyclable";
+                }
+                
+                resultContainer.style.display = 'block';
+                hideLoading();
+                
+            } catch (error) {
+                showError('An error occurred while processing the image.');
+                hideLoading();
+                console.error(error);
+            }
+        });
+        
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+        }
+        
+        function hideError() {
+            errorMessage.style.display = 'none';
+        }
+        
+        function showLoading() {
+            loading.style.display = 'block';
+        }
+        
+        function hideLoading() {
+            loading.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
